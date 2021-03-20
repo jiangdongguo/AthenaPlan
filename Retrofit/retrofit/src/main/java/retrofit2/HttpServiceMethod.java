@@ -33,7 +33,7 @@ abstract class HttpServiceMethod<ResponseT, ReturnT> extends ServiceMethod<Retur
    * speaks HTTP. This requires potentially-expensive reflection so it is best to build each service
    * method only once and reuse it.
    */
-  /**
+  /** 创建HttpServiceMethod
    *
    * @param retrofit
    * @param method
