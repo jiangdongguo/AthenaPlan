@@ -276,7 +276,8 @@ public final class Retrofit {
       @Nullable CallAdapter.Factory skipPast, Type returnType, Annotation[] annotations) {
     Objects.requireNonNull(returnType, "returnType == null");
     Objects.requireNonNull(annotations, "annotations == null");
-
+    // 遍历所有网络适配器
+    // 如果找到类型与returnType匹配的，就返回
     int start = callAdapterFactories.indexOf(skipPast) + 1;
     for (int i = start, count = callAdapterFactories.size(); i < count; i++) {
       CallAdapter<?, ?> adapter = callAdapterFactories.get(i).get(returnType, annotations, this);

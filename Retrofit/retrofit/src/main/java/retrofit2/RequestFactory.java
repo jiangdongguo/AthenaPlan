@@ -367,6 +367,7 @@ final class RequestFactory {
         }
       }
 
+      // 请求网络的方法是kotlin协程
       if (result == null) {
         if (allowContinuation) {
           try {

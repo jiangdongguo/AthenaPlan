@@ -112,10 +112,16 @@ final class OkHttpCall<T> implements Call<T> {
     }
   }
 
+  /** 完成最终的网络请求，并处理响应结果转换
+   *
+   * @param callback 回调接口，外界在该接口方法中做返回数据封装
+   */
   @Override
   public void enqueue(final Callback<T> callback) {
     Objects.requireNonNull(callback, "callback == null");
 
+    // a. 实例化一个OkHttp的Call对象
+    // 在发起网络请求准确之前，会做状态校验，并调用响应的回调接口
     okhttp3.Call call;
     Throwable failure;
 
@@ -134,29 +140,31 @@ final class OkHttpCall<T> implements Call<T> {
         }
       }
     }
-
     if (failure != null) {
-      callback.onFailure(this, failure);
+      callback.onFailure(this, failure); // 失败
       return;
     }
 
     if (canceled) {
-      call.cancel();
+      call.cancel();    // 取消
     }
 
+    // b. 真正的发起异步网络请求
+    // 并调用parseResponse()使用用户指定的数据格式，对响应结果做数据格式转换
     call.enqueue(
         new okhttp3.Callback() {
           @Override
           public void onResponse(okhttp3.Call call, okhttp3.Response rawResponse) {
             Response<T> response;
             try {
+              // b-1 使用数据转换适配器对象对响应结果做数据格式转换
               response = parseResponse(rawResponse);
             } catch (Throwable e) {
               throwIfFatal(e);
               callFailure(e);
               return;
             }
-
+            // b-2 将最终的响应结果回调出去
             try {
               callback.onResponse(OkHttpCall.this, response);
             } catch (Throwable t) {
@@ -171,6 +179,7 @@ final class OkHttpCall<T> implements Call<T> {
           }
 
           private void callFailure(Throwable e) {
+            // b-3 网络请求失败回调
             try {
               callback.onFailure(OkHttpCall.this, e);
             } catch (Throwable t) {
@@ -213,6 +222,8 @@ final class OkHttpCall<T> implements Call<T> {
   }
 
   Response<T> parseResponse(okhttp3.Response rawResponse) throws IOException {
+    // b-1-1 获取响应实体body
+    // 并重新创建一个不包含响应实体的ResponseBody对象，以便后续使用
     ResponseBody rawBody = rawResponse.body();
 
     // Remove the body's source (the only stateful object) so we can pass the response along.
@@ -239,6 +250,11 @@ final class OkHttpCall<T> implements Call<T> {
     }
 
     ExceptionCatchingResponseBody catchingBody = new ExceptionCatchingResponseBody(rawBody);
+    // b-1-2 使用数据转换适配器转换数据
+    // 比如GsonResponseBodyConverter，就是将json格式数据转换为对应的实体对象
+    // 比如ProtoResponseBodyConverter，就是将json格式数据转换为对应的PB对象
+    // 注：GSON、PB的请求参数也需要转换，它们分别对应的是
+    // 比如GsonRequestBodyConverter\ProtoRequestBodyConverter
     try {
       T body = responseConverter.convert(catchingBody);
       return Response.success(body, rawResponse);

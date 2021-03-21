@@ -24,6 +24,10 @@ import javax.annotation.Nullable;
 import okhttp3.ResponseBody;
 import retrofit2.Converter;
 
+/** PB数据转换适配器对象，负责将json格式数据转换为PB实体对象T
+ *
+ * @param <T> 具体的PB实体对象类型
+ */
 final class ProtoResponseBodyConverter<T extends MessageLite>
     implements Converter<ResponseBody, T> {
   private final Parser<T> parser;
@@ -36,6 +40,7 @@ final class ProtoResponseBodyConverter<T extends MessageLite>
 
   @Override
   public T convert(ResponseBody value) throws IOException {
+    // 将json转成pb实体对象
     try {
       return registry == null
           ? parser.parseFrom(value.byteStream())

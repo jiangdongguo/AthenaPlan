@@ -24,6 +24,10 @@ import java.io.IOException;
 import okhttp3.ResponseBody;
 import retrofit2.Converter;
 
+/** GSON数据转换适配器，负责将json格式数据转换为实体对象T
+ *
+ * @param <T> 具体的实体对象类型
+ */
 final class GsonResponseBodyConverter<T> implements Converter<ResponseBody, T> {
   private final Gson gson;
   private final TypeAdapter<T> adapter;
@@ -35,6 +39,7 @@ final class GsonResponseBodyConverter<T> implements Converter<ResponseBody, T> {
 
   @Override
   public T convert(ResponseBody value) throws IOException {
+    // json转实体
     JsonReader jsonReader = gson.newJsonReader(value.charStream());
     try {
       T result = adapter.read(jsonReader);

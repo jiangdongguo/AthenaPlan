@@ -55,7 +55,9 @@ abstract class ServiceMethod<T> {
     return HttpServiceMethod.parseAnnotations(retrofit, method, requestFactory);
   }
 
-  /** 执行mthod方法调用逻辑，即该方法最终将得到发起网络请求的适配器对象
+  /** 执行mthod方法调用逻辑
+   *
+   *  实际调用的是HttpServiceMethod的invoke方法，它是ServiceMethod的唯一实现类
    *
    * @param args 参数
    * @return

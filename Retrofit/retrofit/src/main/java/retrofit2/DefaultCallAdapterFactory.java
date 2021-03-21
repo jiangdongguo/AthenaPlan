@@ -78,6 +78,7 @@ final class DefaultCallAdapterFactory extends CallAdapter.Factory {
       public Call<Object> adapt(Call<Object> call) {
         // ExecutorCallbackCall使用了代理模式（均继承于interface Call<T>）
         // ExecutorCallbackCall就是call的代理对象，它持有了call对象的引用
+        // 注意：参数call的类型为OkHttpCall
         return executor == null ? call : new ExecutorCallbackCall<>(executor, call);
       }
     };
@@ -96,11 +97,13 @@ final class DefaultCallAdapterFactory extends CallAdapter.Factory {
     @Override
     public void enqueue(final Callback<T> callback) {
       Objects.requireNonNull(callback, "callback == null");
-      // 发起异步网络请求
+      // 3-3-1 发起异步网络请求，这里只是处理响应结果返回给外界
+      // delegate类型为OkHttpCall，因此调用的是OkHttpCall.enqueue方法，它将真正调用OkHttp的Call
       // 当响应结果返回后response，通过响应回调线程池(默认为MainThreadExecutor)
       // MainThreadExecutor最终将结果由子线程自动切换到主线程
       delegate.enqueue(
           new Callback<T>() {
+            // response是已经做了数据格式转换
             @Override
             public void onResponse(Call<T> call, final Response<T> response) {
               callbackExecutor.execute(

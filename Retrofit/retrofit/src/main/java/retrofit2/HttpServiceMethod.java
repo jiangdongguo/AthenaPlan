@@ -73,6 +73,14 @@ abstract class HttpServiceMethod<ResponseT, ReturnT> extends ServiceMethod<Retur
     }
 
     // a. 创建网络请求适配器
+    // 遍历所有支持的网络适配器对象，直到找到与返回类型adapterType一致的
+    //    int start = callAdapterFactories.indexOf(skipPast) + 1;
+    //    for (int i = start, count = callAdapterFactories.size(); i < count; i++) {
+    //      CallAdapter<?, ?> adapter = callAdapterFactories.get(i).get(returnType, annotations, this);
+    //      if (adapter != null) {
+    //        return adapter;
+    //      }
+    //    }
     CallAdapter<ResponseT, ReturnT> callAdapter =
         createCallAdapter(retrofit, method, adapterType, annotations);
     Type responseType = callAdapter.responseType();
@@ -91,9 +99,23 @@ abstract class HttpServiceMethod<ResponseT, ReturnT> extends ServiceMethod<Retur
       throw methodError(method, "HEAD method must use Void as response type.");
     }
     // b. 创建数据转换适配器
+    // 遍历所有支持的数据转换适配器，直到找到与响应类型responseType一致的
+    //    int start = converterFactories.indexOf(skipPast) + 1;
+    //    for (int i = start, count = converterFactories.size(); i < count; i++) {
+    //      Converter<ResponseBody, ?> converter =
+    //              converterFactories.get(i).responseBodyConverter(type, annotations, this);
+    //      if (converter != null) {
+    //        //noinspection unchecked
+    //        return (Converter<ResponseBody, T>) converter;
+    //      }
+    //    }
     Converter<ResponseBody, ResponseT> responseConverter =
         createResponseConverter(retrofit, method, responseType);
 
+    // c. 获取callFactory对象，它的类型就是OKHttpClient（可以由用户传入）
+    // 然后根据请求方法是否为协程，创建一个HttpServiceMethod对象
+    // 注：如果isKotlinSuspendFunction=true，说明请求方法是一个kotlin协程
+    // 注：CallAdapted和SuspendForResponse均继承于HttpServiceMethod
     okhttp3.Call.Factory callFactory = retrofit.callFactory;
     if (!isKotlinSuspendFunction) {
       return new CallAdapted<>(requestFactory, callFactory, responseConverter, callAdapter);
@@ -150,8 +172,16 @@ abstract class HttpServiceMethod<ResponseT, ReturnT> extends ServiceMethod<Retur
     this.responseConverter = responseConverter;
   }
 
+  /** 执行真实的请求方法调用逻辑
+   *
+   * @param args
+   * @return 响应结果，是一个Call或Observable或Maybe...
+   */
   @Override
   final @Nullable ReturnT invoke(Object[] args) {
+    // 3. 实例化一个OkHttpCall对象，它继承于retrofit自定义的Call接口
+    // 然后根据这个call对象，调用HttpServiceMethod的adapter方法
+    // 该方法是一个抽象方法，最终实现在CallAdapted或SuspendForBody或SuspendForResponse类中（继承于HttpServiceMethod）
     Call<ResponseT> call = new OkHttpCall<>(requestFactory, args, callFactory, responseConverter);
     return adapt(call, args);
   }
@@ -172,8 +202,10 @@ abstract class HttpServiceMethod<ResponseT, ReturnT> extends ServiceMethod<Retur
 
     @Override
     protected ReturnT adapt(Call<ResponseT> call, Object[] args) {
+      // 3-1 返回网络适配器对象的Call给外界
       //调用具体网络请求适配器的adapt方法
       //最后返回一个Call对象(Default)，或者Observable(RxJava)等
+      //注意：参数call对象类型为OkHttpCall
       return callAdapter.adapt(call);
     }
   }
