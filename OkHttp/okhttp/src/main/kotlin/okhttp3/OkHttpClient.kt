@@ -275,6 +275,11 @@ open class OkHttpClient internal constructor(
   }
 
   /** Prepares the [request] to be executed at some point in the future. */
+  /**
+   * 3. 创建发起网络请求的Call对象,通过它可以执行同步请求和异步请求
+   * 调用客户端OkHttpClient.newCall(request)方法实现
+   * Call是一个接口，它的实现类为RealCall，它是衔接应用层与网络层的桥梁
+   */
   override fun newCall(request: Request): Call = RealCall(this, request, forWebSocket = false)
 
   /** Uses [request] to connect a new web socket. */
@@ -476,20 +481,34 @@ open class OkHttpClient internal constructor(
       level = DeprecationLevel.ERROR)
   fun pingIntervalMillis(): Int = pingIntervalMillis
 
+  /***
+   * 1. 创建网络请求客户端OkHttpClient，分为两步
+   * (1) 创建构建者OkHttpClient.Builder，并配置构建参数；
+   * (2) 由构建者构建客户端OkHttpClient
+   * var client = OkHttpClient.newBuilder()
+   *              .addInterceptor(...)
+   *              .dns(...)
+   *              .proxy(...)
+   *              .build()
+   */
+
+  //（1）创建构建客户端的构建者对象
+  // 即var builder = OkHttpClient.newBuilder()
+  // 在Builder构建者的构造函数中，初始化用于构建OkHttpClient对象的各类参数
   class Builder constructor() {
-    internal var dispatcher: Dispatcher = Dispatcher()
-    internal var connectionPool: ConnectionPool = ConnectionPool()
-    internal val interceptors: MutableList<Interceptor> = mutableListOf()
-    internal val networkInterceptors: MutableList<Interceptor> = mutableListOf()
+    internal var dispatcher: Dispatcher = Dispatcher()                            // 请求调度器
+    internal var connectionPool: ConnectionPool = ConnectionPool()                // 连接池
+    internal val interceptors: MutableList<Interceptor> = mutableListOf()         // 拦截器列表
+    internal val networkInterceptors: MutableList<Interceptor> = mutableListOf()  // 网络拦截器列表
     internal var eventListenerFactory: EventListener.Factory = EventListener.NONE.asFactory()
-    internal var retryOnConnectionFailure = true
+    internal var retryOnConnectionFailure = true            // 请求失败时是否重试，默认为true
     internal var authenticator: Authenticator = Authenticator.NONE
     internal var followRedirects = true
     internal var followSslRedirects = true
-    internal var cookieJar: CookieJar = CookieJar.NO_COOKIES
-    internal var cache: Cache? = null
-    internal var dns: Dns = Dns.SYSTEM
-    internal var proxy: Proxy? = null
+    internal var cookieJar: CookieJar = CookieJar.NO_COOKIES // 持久连接Cookie
+    internal var cache: Cache? = null                        // 缓存
+    internal var dns: Dns = Dns.SYSTEM                       // 域名解析器
+    internal var proxy: Proxy? = null                        // 访问代理
     internal var proxySelector: ProxySelector? = null
     internal var proxyAuthenticator: Authenticator = Authenticator.NONE
     internal var socketFactory: SocketFactory = SocketFactory.getDefault()
@@ -500,10 +519,10 @@ open class OkHttpClient internal constructor(
     internal var hostnameVerifier: HostnameVerifier = OkHostnameVerifier
     internal var certificatePinner: CertificatePinner = CertificatePinner.DEFAULT
     internal var certificateChainCleaner: CertificateChainCleaner? = null
-    internal var callTimeout = 0
-    internal var connectTimeout = 10_000
-    internal var readTimeout = 10_000
-    internal var writeTimeout = 10_000
+    internal var callTimeout = 0          // 请求超时时间
+    internal var connectTimeout = 10_000  // 连接超时时间
+    internal var readTimeout = 10_000     // 写操作超时时间
+    internal var writeTimeout = 10_000    // 读操作超时时间
     internal var pingInterval = 0
     internal var minWebSocketMessageToCompress = RealWebSocket.DEFAULT_MINIMUM_DEFLATE_SIZE
     internal var routeDatabase: RouteDatabase? = null
@@ -1076,6 +1095,9 @@ open class OkHttpClient internal constructor(
       this.minWebSocketMessageToCompress = bytes
     }
 
+    //（2）使用构建者OkHttpClient.Builder构建客户端OkHttpClient对象
+    // 在OkHttpClient构造方法中，会依次将构建者配置的参数
+    // 赋值给OkHttpClient
     fun build(): OkHttpClient = OkHttpClient(this)
   }
 

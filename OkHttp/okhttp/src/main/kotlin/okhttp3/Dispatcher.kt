@@ -99,12 +99,16 @@ class Dispatcher constructor() {
     }
 
   /** Ready async calls in the order they'll be run. */
+  // 异步等待队列
   private val readyAsyncCalls = ArrayDeque<AsyncCall>()
 
   /** Running asynchronous calls. Includes canceled calls that haven't finished yet. */
+  // 异步执行队列
   private val runningAsyncCalls = ArrayDeque<AsyncCall>()
 
   /** Running synchronous calls. Includes canceled calls that haven't finished yet. */
+  // 同步执行队列
+  // ArrayDeque即可作为Stack，也可作为Queue，它是线程非安全的
   private val runningSyncCalls = ArrayDeque<RealCall>()
 
   constructor(executorService: ExecutorService) : this() {
@@ -113,15 +117,15 @@ class Dispatcher constructor() {
 
   internal fun enqueue(call: AsyncCall) {
     synchronized(this) {
+      // 3-2-(2)-a 首先，将异步任务AsyncCall添加到等待队列中
       readyAsyncCalls.add(call)
-
-      // Mutate the AsyncCall so that it shares the AtomicInteger of an existing running call to
-      // the same host.
       if (!call.call.forWebSocket) {
         val existingCall = findExistingCallWithHost(call.host)
         if (existingCall != null) call.reuseCallsPerHostFrom(existingCall)
       }
     }
+    // 3-2-(2)-a 然后，从等待队列取任务插入到执行队列中
+    // 再在线程池中执行新任务
     promoteAndExecute()
   }
 
@@ -163,22 +167,33 @@ class Dispatcher constructor() {
 
     val executableCalls = mutableListOf<AsyncCall>()
     val isRunning: Boolean
+    // b-1 遍历等待队列，决定是否将其添加到可执行队列中（线程安全）
+    // - 如果执行队列中正在执行的任务数量>=maxRequests，拒绝添加任何新任务到执行队列；
+    // - 如果当前Host的请求数超过maxRequestsPerHost，拒绝本次新任务到执行队列；
+    // - 否则，将等待队列中的任务添加到执行队列，并从等待队列删除任务
     synchronized(this) {
       val i = readyAsyncCalls.iterator()
       while (i.hasNext()) {
         val asyncCall = i.next()
-
+        // 最大并发量判断，maxRequests=64
         if (runningAsyncCalls.size >= this.maxRequests) break // Max capacity.
+        // Host允许最大请求数判断，maxRequestsPerHost = 5
         if (asyncCall.callsPerHost.get() >= this.maxRequestsPerHost) continue // Host max capacity.
-
+        // 从等待队列移除
         i.remove()
         asyncCall.callsPerHost.incrementAndGet()
+        // 将新任务添加到executableCalls列表中
         executableCalls.add(asyncCall)
+        // 将其添加到执行队列中
         runningAsyncCalls.add(asyncCall)
       }
       isRunning = runningCallsCount() > 0
     }
-
+    // b-2 遍历executableCalls列表
+    // 依次将要执行的新任务放在线程池中执行，调用asyncCall.executeOn实现
+    // （1）将新任务插入到线程池执行， executorService.execute(this)；
+    // （2）执行异常或执行完毕均尝试从等待队列中取新任务任务， client.dispatcher.finished(this)；
+    // 注：具体的任务执行流程，请看AsyncCall.run()方法
     for (i in 0 until executableCalls.size) {
       val asyncCall = executableCalls[i]
       asyncCall.executeOn(executorService)
@@ -189,6 +204,7 @@ class Dispatcher constructor() {
 
   /** Used by [Call.execute] to signal it is in-flight. */
   @Synchronized internal fun executed(call: RealCall) {
+    // 将Call任务添加到同步执行队列中ArrayDeque
     runningSyncCalls.add(call)
   }
 
@@ -206,10 +222,13 @@ class Dispatcher constructor() {
   private fun <T> finished(calls: Deque<T>, call: T) {
     val idleCallback: Runnable?
     synchronized(this) {
+      // a. 从对应队列中移除任务RealCall(同步任务)、AsyncCall(异步任务，Runnable)
       if (!calls.remove(call)) throw AssertionError("Call wasn't in-flight!")
       idleCallback = this.idleCallback
     }
 
+    //  b. 对于异步请求来说，遍历等待队列
+    //  从等待队列中取新的任务，插入到执行队列中
     val isRunning = promoteAndExecute()
 
     if (!isRunning && idleCallback != null) {

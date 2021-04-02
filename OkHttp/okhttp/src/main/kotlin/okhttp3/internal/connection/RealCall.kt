@@ -144,23 +144,38 @@ class RealCall(
 
   override fun isCanceled() = canceled
 
+  // 3-1 发起同步网络请求
   override fun execute(): Response {
+    // (1) 检查当前Call是否被执行
+    // 如果正在执行，抛出"IllegalStateException"异常
     check(executed.compareAndSet(false, true)) { "Already Executed" }
 
     timeout.enter()
     callStart()
     try {
+      // (2) 调用任务调度器的executed方法
+      // 将Call任务添加到同步执行队列中即runningSyncCalls（ArrayDeque<RealCall>()）
+      // 即runningSyncCalls.add(call)
       client.dispatcher.executed(this)
+      //（3）通过拦截器链获得响应Response
+      // 并直接返回（注意：执行完getResponseWithInterceptorChain()后，会接着执行finally语句，最后再执行return）
       return getResponseWithInterceptorChain()
     } finally {
+      //（4）网络请求完毕或者异常
+      // 从runningSyncCalls队列中移除当前任务
       client.dispatcher.finished(this)
     }
   }
 
+  // 3-2 发起异步网络请求
   override fun enqueue(responseCallback: Callback) {
+    // (1) 检查当前Call是否被执行
+    // 如果正在执行，抛出"IllegalStateException"异常
     check(executed.compareAndSet(false, true)) { "Already Executed" }
 
     callStart()
+    //（2） 调用任务调度器的enqueue方法
+    // 注：AsyncCall是RealCall的内部类，继承于Runnable
     client.dispatcher.enqueue(AsyncCall(responseCallback))
   }
 
@@ -171,9 +186,19 @@ class RealCall(
     eventListener.callStart(this)
   }
 
+  /**
+   * 4. 依次执行拦截器，返回最终网络请求的响应结果Response
+   * client.interceptors：用户自定义拦截器
+   * RetryAndFollowUpInterceptor；在连接失败后进行重新连接，必要时进行重定向。如果调用被取消，抛出IOException;
+   * BridgeInterceptor:构建网络连接桥梁，即先将用户请求转换成网络请求，然后访问访问，最后将网络响应转换成用户响应；
+   * CacheInterceptor：缓存拦截器、从缓存中获取服务器请求，或者把服务器响应写入缓存中；
+   * ConnectInterceptor：连接拦截器。打开一个连接，去连接目标服务器；
+   * CallServerInterceptor：拦截器链中的最后一个节点，通过网络请求服务器。
+   */
   @Throws(IOException::class)
   internal fun getResponseWithInterceptorChain(): Response {
     // Build a full stack of interceptors.
+    // （1）将所有拦截器插入到列表interceptors中
     val interceptors = mutableListOf<Interceptor>()
     interceptors += client.interceptors
     interceptors += RetryAndFollowUpInterceptor(client)
@@ -185,20 +210,26 @@ class RealCall(
     }
     interceptors += CallServerInterceptor(forWebSocket)
 
+    // （2）创建一个RealInterceptorChain对象
+    // 它是对所有拦截器、任务等信息的封装，是执行拦截器的实际类
     val chain = RealInterceptorChain(
-        call = this,
-        interceptors = interceptors,
-        index = 0,
+        call = this,                // 任务Call对象
+        interceptors = interceptors,// 拦截器列表
+        index = 0,                  // 默认执行的拦截器下标，即从第一个拦截器开始执行
         exchange = null,
-        request = originalRequest,
-        connectTimeoutMillis = client.connectTimeoutMillis,
-        readTimeoutMillis = client.readTimeoutMillis,
+        request = originalRequest,  // 请求信息Request
+        connectTimeoutMillis = client.connectTimeoutMillis, // 连接超时时间
+        readTimeoutMillis = client.readTimeoutMillis,       //
         writeTimeoutMillis = client.writeTimeoutMillis
     )
 
     var calledNoMoreExchanges = false
     try {
+      // （3）从第一个拦截器开始，依次执行所有拦截器
+      // 直到最后一个拦截器，它返回的结果即为响应结果response
       val response = chain.proceed(originalRequest)
+      // （4）如果用户取消了请求，抛出异常
+      // 不返回响应结果
       if (isCanceled()) {
         response.closeQuietly()
         throw IOException("Canceled")
@@ -495,33 +526,40 @@ class RealCall(
 
       var success = false
       try {
+        // 将任务添加到线程池
         executorService.execute(this)
         success = true
       } catch (e: RejectedExecutionException) {
         val ioException = InterruptedIOException("executor rejected")
         ioException.initCause(e)
         noMoreExchanges(ioException)
+        // 如果本次任务执行异常，出现异常回调responseCallback接口的onFailure方法
         responseCallback.onFailure(this@RealCall, ioException)
       } finally {
+        // 如果本次任务执行异常，从等待队列中取下一个任务
         if (!success) {
           client.dispatcher.finished(this) // This call is no longer running!
         }
       }
     }
 
+    // 3-2 异步任务执行流程
     override fun run() {
       threadName("OkHttp ${redactedUrl()}") {
         var signalledCallback = false
         timeout.enter()
         try {
+          // （1）调用拦截器链得到响应数据reponse
           val response = getResponseWithInterceptorChain()
           signalledCallback = true
+          // （2）请求成功，将异步请求响应结果回调出去
           responseCallback.onResponse(this@RealCall, response)
         } catch (e: IOException) {
           if (signalledCallback) {
             // Do not signal the callback twice!
             Platform.get().log("Callback failure for ${toLoggableString()}", Platform.INFO, e)
           } else {
+            //（3）请求失败，将异常信息回调出去
             responseCallback.onFailure(this@RealCall, e)
           }
         } catch (t: Throwable) {
@@ -533,6 +571,8 @@ class RealCall(
           }
           throw t
         } finally {
+          // （4）从等待队列中取下一批任务添加到线程池中执行
+          // 并更新等待队列和执行队列的信息
           client.dispatcher.finished(this)
         }
       }

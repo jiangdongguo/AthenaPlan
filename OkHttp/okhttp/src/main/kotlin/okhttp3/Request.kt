@@ -133,15 +133,27 @@ class Request internal constructor(
     append('}')
   }
 
+  /**
+   *  2. 构建网络请求对象Requst，分为两步：
+   *  （1）创建构建Request对象的构建者Request.Builder；
+   *  （2）使用构建者构建Request对象
+   *  var request = Request.Builder()
+   *                .url(...)
+   *                .header(...)
+   *                .build()
+   */
+
+  // （1）创建构建Request对象的构建者Request.Builder
+  // var requestBuilder = Request.newBuilder()
   open class Builder {
-    internal var url: HttpUrl? = null
-    internal var method: String
-    internal var headers: Headers.Builder
-    internal var body: RequestBody? = null
+    internal var url: HttpUrl? = null      // host域名
+    internal var method: String            // 请求方法，默认为"GET"
+    internal var headers: Headers.Builder  // 请求头Headers
+    internal var body: RequestBody? = null // 请求实体RequestBody
 
     /** A mutable map of tags, or an immutable empty map if we don't have any. */
     internal var tags: MutableMap<Class<*>, Any> = mutableMapOf()
-
+                                            // tag集合
     constructor() {
       this.method = "GET"
       this.headers = Headers.Builder()
@@ -284,6 +296,7 @@ class Request internal constructor(
       }
     }
 
+    // (2) 使用构建者构建Request对象
     open fun build(): Request {
       return Request(
           checkNotNull(url) { "url == null" },

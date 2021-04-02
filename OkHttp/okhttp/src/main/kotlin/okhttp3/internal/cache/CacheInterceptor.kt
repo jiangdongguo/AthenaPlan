@@ -41,13 +41,21 @@ import okio.buffer
 /** Serves requests from the cache and writes responses to the cache. */
 class CacheInterceptor(internal val cache: Cache?) : Interceptor {
 
+  /**
+   * 4-3 CacheInterceptor拦截器
+   * 从缓存中获取服务器请求，或者把服务器响应写入缓存中
+   */
   @Throws(IOException::class)
   override fun intercept(chain: Interceptor.Chain): Response {
     val call = chain.call()
+    // (1) 根据请求获“候选”缓存，如果Cache中有的话
     val cacheCandidate = cache?.get(chain.request())
 
     val now = System.currentTimeMillis()
-
+    // (2) 获取缓存策略strategy
+    // 工厂模式
+    // networkRequest----->网络请求
+    // cacheResponse------>缓存响应结果
     val strategy = CacheStrategy.Factory(now, chain.request(), cacheCandidate).compute()
     val networkRequest = strategy.networkRequest
     val cacheResponse = strategy.cacheResponse

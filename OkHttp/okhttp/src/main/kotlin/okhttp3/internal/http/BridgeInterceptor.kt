@@ -33,8 +33,17 @@ import okio.buffer
  */
 class BridgeInterceptor(private val cookieJar: CookieJar) : Interceptor {
 
+  /**
+   * 4-2 BridgeInterceptor拦截器
+   * 构建网络连接桥梁
+   */
   @Throws(IOException::class)
   override fun intercept(chain: Interceptor.Chain): Response {
+    // （1）将用户请求userRequest将转为服务器请求
+    // "Connection": "Keep-Alive"
+    // "Transfer-Encoding": "chunked"
+    // "Accept-Encoding": "gzip"
+    // ...
     val userRequest = chain.request()
     val requestBuilder = userRequest.newBuilder()
 
@@ -79,7 +88,8 @@ class BridgeInterceptor(private val cookieJar: CookieJar) : Interceptor {
     if (userRequest.header("User-Agent") == null) {
       requestBuilder.header("User-Agent", userAgent)
     }
-
+    // (2) 调用下一个拦截器
+    // 并将服务器请求作为参数传入CacheInterceptor
     val networkResponse = chain.proceed(requestBuilder.build())
 
     cookieJar.receiveHeaders(userRequest.url, networkResponse.headers)

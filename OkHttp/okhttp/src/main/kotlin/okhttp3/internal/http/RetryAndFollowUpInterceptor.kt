@@ -51,10 +51,17 @@ import okhttp3.internal.withSuppressed
  * This interceptor recovers from failures and follows redirects as necessary. It may throw an
  * [IOException] if the call was canceled.
  */
+// RetryAndFollowUpInterceptor拦截器
 class RetryAndFollowUpInterceptor(private val client: OkHttpClient) : Interceptor {
 
+  /**
+   * 4-1 RetryAndFollowUpInterceptor拦截器
+   * 用于处理错误和进行重定向
+    */
   @Throws(IOException::class)
   override fun intercept(chain: Interceptor.Chain): Response {
+    //（1）获取下一个要执行的拦截器
+    // 注：每一个拦截器存储的request和call信息是一致的
     val realChain = chain as RealInterceptorChain
     var request = chain.request
     val call = realChain.call
@@ -62,16 +69,19 @@ class RetryAndFollowUpInterceptor(private val client: OkHttpClient) : Intercepto
     var priorResponse: Response? = null
     var newExchangeFinder = true
     var recoveredFailures = listOf<IOException>()
+    // （2）开始轮询
     while (true) {
       call.enterNetworkInterceptorExchange(request, newExchangeFinder)
 
       var response: Response
       var closeActiveExchange = true
       try {
+        // a. 如果请求被取消，抛出IOException
         if (call.isCanceled()) {
           throw IOException("Canceled")
         }
-
+        // b. 调用下一个拦截器BridgeInterceptor
+        // 将用户请求request作为参数传入
         try {
           response = realChain.proceed(request)
           newExchangeFinder = true

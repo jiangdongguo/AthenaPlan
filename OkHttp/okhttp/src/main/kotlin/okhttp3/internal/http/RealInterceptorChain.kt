@@ -102,9 +102,14 @@ class RealInterceptorChain(
     }
 
     // Call the next interceptor in the chain.
+    // a. 根据index从拦截器列表中获取拦截器对象
+    // 注：index默认为0，即从第一个拦截器开始执行
     val next = copy(index = index + 1, request = request)
     val interceptor = interceptors[index]
 
+    // b. 调用当前拦截器的intercept()处理对应的逻辑，并把下一个要执行的拦截器传入
+    // 当该拦截器处理完毕后，又会调用本方法，即RealInterceptorChain.proceed()
+    // 每个拦截器都会返回一个Response给下一个拦截器，直到最后一个拦截器返回的结果即为响应结果
     @Suppress("USELESS_ELVIS")
     val response = interceptor.intercept(next) ?: throw NullPointerException(
         "interceptor $interceptor returned null")
