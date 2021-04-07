@@ -283,7 +283,13 @@ class RealCall(
     }
 
     val exchangeFinder = this.exchangeFinder!!
+    // a. 获取Http1ExchangeCodec或Http2ExchangeCodec
+    // 它们均继承于ExchangeCodec，分别对应于Http/1.1、Http2.0，
+    // 即用于发起一个Socket连接，主并对Http请求和Http响应进行编解码
     val codec = exchangeFinder.find(client, chain)
+
+    // b. 将codec封装到Exchange对象
+    // 并返回
     val result = Exchange(this, eventListener, exchangeFinder, codec)
     this.interceptorScopedExchange = result
     this.exchange = result

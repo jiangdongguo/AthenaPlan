@@ -69,7 +69,7 @@ class RetryAndFollowUpInterceptor(private val client: OkHttpClient) : Intercepto
     var priorResponse: Response? = null
     var newExchangeFinder = true
     var recoveredFailures = listOf<IOException>()
-    // （2）开始轮询
+    // （2）开始轮询，即是否需要重定向，当次数超过20次抛出异常
     while (true) {
       call.enterNetworkInterceptorExchange(request, newExchangeFinder)
 
@@ -104,8 +104,13 @@ class RetryAndFollowUpInterceptor(private val client: OkHttpClient) : Intercepto
           newExchangeFinder = false
           continue
         }
-
+        //--------------------------------------------------------------------
+        //--------------------------------------------------------------------
+        // //////////////  处理Bridge拦截器返回的用户响应  ////////////////
+        //--------------------------------------------------------------------
+        //--------------------------------------------------------------------
         // Attach the prior response if it exists. Such responses never have a body.
+        // c. 检测前一个Response
         if (priorResponse != null) {
           response = response.newBuilder()
               .priorResponse(priorResponse.newBuilder()
@@ -116,7 +121,7 @@ class RetryAndFollowUpInterceptor(private val client: OkHttpClient) : Intercepto
 
         val exchange = call.interceptorScopedExchange
         val followUp = followUpRequest(response, exchange)
-
+        // d. followUp为null，表示不要重定向，释放资源并且返回response
         if (followUp == null) {
           if (exchange != null && exchange.isDuplex) {
             call.timeoutEarlyExit()
@@ -131,6 +136,8 @@ class RetryAndFollowUpInterceptor(private val client: OkHttpClient) : Intercepto
           return response
         }
 
+        // e. 否则，关闭response的body
+        // 并重定向，注意，最大重定向次数不能超过20次
         response.body?.closeQuietly()
 
         if (++followUpCount > MAX_FOLLOW_UPS) {

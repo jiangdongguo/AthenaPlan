@@ -26,10 +26,16 @@ import okio.buffer
 /** This is the last interceptor in the chain. It makes a network call to the server. */
 class CallServerInterceptor(private val forWebSocket: Boolean) : Interceptor {
 
+  /**
+   * 4-5 CallServerInterceptor拦截器
+   * 拦截器链的最后一个拦截器，执行通过网络请求服务器，即完成Socket通信
+   */
   @Throws(IOException::class)
   override fun intercept(chain: Interceptor.Chain): Response {
     val realChain = chain as RealInterceptorChain
+    // (1) 获取网络访问对象Http1ExchangeCodec/Http2ExchangeCodec
     val exchange = realChain.exchange!!
+    // (2) 获取网络访问请求request和body
     val request = realChain.request
     val requestBody = request.body
     val sentRequestMillis = System.currentTimeMillis()
@@ -38,18 +44,21 @@ class CallServerInterceptor(private val forWebSocket: Boolean) : Interceptor {
     var responseBuilder: Response.Builder? = null
     var sendRequestException: IOException? = null
     try {
+      // (3) 打开一个Socket连接
+      // 获取一个sink对象，写入头部
       exchange.writeRequestHeaders(request)
 
+      // (4) 检查是否有body的请求方法
+      // 即请求方法不是GET和HEAD的情况
       if (HttpMethod.permitsRequestBody(request.method) && requestBody != null) {
-        // If there's a "Expect: 100-continue" header on the request, wait for a "HTTP/1.1 100
-        // Continue" response before transmitting the request body. If we don't get that, return
-        // what we did get (such as a 4xx response) without ever transmitting the request body.
+        //如果请求头是"100-continue"，等待服务器的响应
         if ("100-continue".equals(request.header("Expect"), ignoreCase = true)) {
           exchange.flushRequest()
           responseBuilder = exchange.readResponseHeaders(expectContinue = true)
           exchange.responseHeadersStart()
           invokeStartEvent = false
         }
+        // 写入body，发送请求数据到服务端
         if (responseBuilder == null) {
           if (requestBody.isDuplex()) {
             // Prepare a duplex body so that the application can send a request body later.
@@ -89,6 +98,7 @@ class CallServerInterceptor(private val forWebSocket: Boolean) : Interceptor {
     }
 
     try {
+      // (5) 读取响应头
       if (responseBuilder == null) {
         responseBuilder = exchange.readResponseHeaders(expectContinue = false)!!
         if (invokeStartEvent) {
@@ -96,6 +106,7 @@ class CallServerInterceptor(private val forWebSocket: Boolean) : Interceptor {
           invokeStartEvent = false
         }
       }
+      // (6) 构建响应Response
       var response = responseBuilder
           .request(request)
           .handshake(exchange.connection.handshake())
@@ -103,9 +114,8 @@ class CallServerInterceptor(private val forWebSocket: Boolean) : Interceptor {
           .receivedResponseAtMillis(System.currentTimeMillis())
           .build()
       var code = response.code
+      // (7) 如果服务器返回的状态码是100，再次尝试读取具体的response
       if (code == 100) {
-        // Server sent a 100-continue even though we did not request one. Try again to read the
-        // actual response status.
         responseBuilder = exchange.readResponseHeaders(expectContinue = false)!!
         if (invokeStartEvent) {
           exchange.responseHeadersStart()
@@ -120,13 +130,14 @@ class CallServerInterceptor(private val forWebSocket: Boolean) : Interceptor {
       }
 
       exchange.responseHeadersEnd(response)
-
+      // (8) 如果是WebSocket，并且返回状态码为101，表示响应body为空
       response = if (forWebSocket && code == 101) {
         // Connection is upgrading, but we need to ensure interceptors see a non-null response body.
         response.newBuilder()
             .body(EMPTY_RESPONSE)
             .build()
       } else {
+        // (9) 读取响应实体body
         response.newBuilder()
             .body(exchange.openResponseBody(response))
             .build()
@@ -139,6 +150,7 @@ class CallServerInterceptor(private val forWebSocket: Boolean) : Interceptor {
         throw ProtocolException(
             "HTTP $code had non-zero Content-Length: ${response.body?.contentLength()}")
       }
+      // (10) 将最终的网络响应response返回给上一层拦截器ConnectInterceptor
       return response
     } catch (e: IOException) {
       if (sendRequestException != null) {

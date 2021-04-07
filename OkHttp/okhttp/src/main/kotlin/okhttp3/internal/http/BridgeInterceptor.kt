@@ -35,11 +35,11 @@ class BridgeInterceptor(private val cookieJar: CookieJar) : Interceptor {
 
   /**
    * 4-2 BridgeInterceptor拦截器
-   * 构建网络连接桥梁
+   * 构建网络连接桥梁。将用户请求转换为网络请求，将网络响应转换为用户响应
    */
   @Throws(IOException::class)
   override fun intercept(chain: Interceptor.Chain): Response {
-    // （1）将用户请求userRequest将转为服务器请求
+    // （1）将用户请求userRequest将转为网络请求
     // "Connection": "Keep-Alive"
     // "Transfer-Encoding": "chunked"
     // "Accept-Encoding": "gzip"
@@ -94,6 +94,13 @@ class BridgeInterceptor(private val cookieJar: CookieJar) : Interceptor {
 
     cookieJar.receiveHeaders(userRequest.url, networkResponse.headers)
 
+    //--------------------------------------------------------------------
+    //--------------------------------------------------------------------
+    // //////////////  处理Cache拦截器返回的网络响应  ////////////////
+    //--------------------------------------------------------------------
+    //--------------------------------------------------------------------
+
+    // (3) 将网络响应转换为用户响应
     val responseBuilder = networkResponse.newBuilder()
         .request(userRequest)
 

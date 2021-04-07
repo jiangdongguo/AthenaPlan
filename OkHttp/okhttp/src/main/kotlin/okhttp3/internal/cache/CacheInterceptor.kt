@@ -60,15 +60,17 @@ class CacheInterceptor(internal val cache: Cache?) : Interceptor {
     val networkRequest = strategy.networkRequest
     val cacheResponse = strategy.cacheResponse
 
+    // (3) 从缓存中追踪Response
     cache?.trackResponse(strategy)
     val listener = (call as? RealCall)?.eventListener ?: EventListener.NONE
 
+    // (4) 如果缓存不适用，则关闭
     if (cacheCandidate != null && cacheResponse == null) {
       // The cache candidate wasn't applicable. Close it.
       cacheCandidate.body?.closeQuietly()
     }
 
-    // If we're forbidden from using the network and the cache is insufficient, fail.
+    // (5) 如果网络被禁止，且缓存为空，则返回失败
     if (networkRequest == null && cacheResponse == null) {
       return Response.Builder()
           .request(chain.request())
@@ -83,7 +85,7 @@ class CacheInterceptor(internal val cache: Cache?) : Interceptor {
           }
     }
 
-    // If we don't need the network, we're done.
+    // （6）如果网络被禁止，从缓存中获取响应并返回
     if (networkRequest == null) {
       return cacheResponse!!.newBuilder()
           .cacheResponse(stripBody(cacheResponse))
@@ -97,18 +99,24 @@ class CacheInterceptor(internal val cache: Cache?) : Interceptor {
     } else if (cache != null) {
       listener.cacheMiss(call)
     }
-
+    // (7) 调用下一个拦截器，即ConnectInteceptor
+    // 从网络中获取响应response
     var networkResponse: Response? = null
     try {
       networkResponse = chain.proceed(networkRequest)
     } finally {
-      // If we're crashing on I/O or otherwise, don't leak the cache body.
+      // 关闭Body，防止出现内存泄漏
       if (networkResponse == null && cacheCandidate != null) {
         cacheCandidate.body?.closeQuietly()
       }
     }
-
-    // If we have a cache response too, then we're doing a conditional get.
+    //--------------------------------------------------------------------
+    //--------------------------------------------------------------------
+    // //////////////  处理Connect拦截器返回的网络响应Response  ////////////////
+    //--------------------------------------------------------------------
+    //--------------------------------------------------------------------
+    // (8) 如果缓存中存在Response，同时检测networkResponse是否被修改
+    // 然后再更新缓存中的数据到最新
     if (cacheResponse != null) {
       if (networkResponse?.code == HTTP_NOT_MODIFIED) {
         val response = cacheResponse.newBuilder()
@@ -120,10 +128,8 @@ class CacheInterceptor(internal val cache: Cache?) : Interceptor {
             .build()
 
         networkResponse.body!!.close()
-
-        // Update the cache after combining headers but before stripping the
-        // Content-Encoding header (as performed by initContentStream()).
         cache!!.trackConditionalCacheHit()
+        // 更新缓存中的数据到最新
         cache.update(cacheResponse, response)
         return response.also {
           listener.cacheHit(call, it)
@@ -133,6 +139,8 @@ class CacheInterceptor(internal val cache: Cache?) : Interceptor {
       }
     }
 
+    // (9) 使用网络响应networkResponse和cacheResponse
+    // 构建response
     val response = networkResponse!!.newBuilder()
         .cacheResponse(stripBody(cacheResponse))
         .networkResponse(stripBody(networkResponse))
@@ -158,7 +166,8 @@ class CacheInterceptor(internal val cache: Cache?) : Interceptor {
         }
       }
     }
-
+    // (10) 将(9)构建的response返回给上一个拦截器
+    // 即桥接拦截器BridgeInterceptor
     return response
   }
 
