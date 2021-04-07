@@ -26,6 +26,7 @@ public class AutowiredServiceImpl implements AutowiredService {
 
     @Override
     public void init(Context context) {
+        // 最近最少使用算法
         classCache = new LruCache<>(50);
         blackList = new ArrayList<>();
     }

@@ -32,7 +32,7 @@ public class InterceptorServiceImpl implements InterceptorService {
     @Override
     public void doInterceptions(final Postcard postcard, final InterceptorCallback callback) {
         if (MapUtils.isNotEmpty(Warehouse.interceptorsIndex)) {
-
+            // 1. 用户自定义拦截器，创建一个线程池任务处理拦截逻辑
             checkInterceptorsInitStatus();
 
             if (!interceptorHasInit) {
@@ -60,6 +60,7 @@ public class InterceptorServiceImpl implements InterceptorService {
                 }
             });
         } else {
+            // 2. 否则，直接继续接下来的逻辑
             callback.onContinue(postcard);
         }
     }
@@ -74,6 +75,7 @@ public class InterceptorServiceImpl implements InterceptorService {
     private static void _execute(final int index, final CancelableCountDownLatch counter, final Postcard postcard) {
         if (index < Warehouse.interceptors.size()) {
             IInterceptor iInterceptor = Warehouse.interceptors.get(index);
+            // 调用拦截器的process方法
             iInterceptor.process(postcard, new InterceptorCallback() {
                 @Override
                 public void onContinue(Postcard postcard) {

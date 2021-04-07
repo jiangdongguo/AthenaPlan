@@ -66,6 +66,7 @@ final class _ARouter {
         LogisticsCenter.init(mContext, executor);
         logger.info(Consts.TAG, "ARouter init success!");
         hasInit = true;
+        // 主线程Handler
         mHandler = new Handler(Looper.getMainLooper());
 
         return true;
@@ -171,7 +172,11 @@ final class _ARouter {
     }
 
     static void inject(Object thiz) {
+        // 1. 获取AutowiredService实例对象
+        // 注：AutowiredService是一个IProvider(服务)
         AutowiredService autowiredService = ((AutowiredService) ARouter.getInstance().build("/arouter/service/autowired").navigation());
+        // 2. 调用AutowiredServiceImpl的autowire()方法
+        // 进入自动装配流程
         if (null != autowiredService) {
             autowiredService.autowire(thiz);
         }
@@ -252,6 +257,7 @@ final class _ARouter {
 
     static void afterInit() {
         // Trigger interceptor init, use byName.
+        // interceptorService也是一个IProvider
         interceptorService = (InterceptorService) ARouter.getInstance().build("/arouter/service/interceptor").navigation();
     }
 
@@ -339,7 +345,7 @@ final class _ARouter {
         if (null != callback) {
             callback.onFound(postcard);
         }
-        // 5. 根据greenChannel标志，执行拦截器(拦截器代码需异步执行，防止ANR)
+        // 5. 根据greenChannel标志（绿色通道），执行拦截器(拦截器代码需异步执行，防止ANR)
         //  默认为false，但如果routeType是Provider或Fragment，会将其置为true(Logistics.completion)
         //  因此拦截器只针对Activity
         if (!postcard.isGreenChannel()) {   // It must be run in async thread, maybe interceptor cost too mush time made ANR.
